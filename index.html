@@ -1,0 +1,64 @@
+<!--
+SQL: chromatic_leaderboard table and RLS policies
+
+CREATE TABLE chromatic_leaderboard (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  score integer NOT NULL,
+  time_ms integer NOT NULL,
+  played_at timestamptz DEFAULT now(),
+  metadata jsonb DEFAULT '{}'
+);
+
+-- Example RLS: allow inserts from anonymous role but validate values
+ALTER TABLE chromatic_leaderboard ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "public_insert" ON chromatic_leaderboard
+  FOR INSERT
+  USING (true)
+  WITH CHECK (
+    name IS NOT NULL AND name <> '' AND score >= 0
+  );
+
+-- Note: tighten policies for production; use Edge Function for anti-abuse
+--
+-- Supabase client placeholders below must be replaced with real values
+--
+-- END SQL
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Chromatic — Viral Color Perception Test</title>
+  <style>
+    body{font-family:system-ui,apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;margin:1rem}
+    header{display:flex;align-items:center;gap:1rem}
+    .board{margin-top:1rem}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Chromatic</h1>
+    <p>A Farnsworth-Munsell inspired color perception test.</p>
+  </header>
+  <main>
+    <div class="board">
+      <p>Placeholder MVP. Replace with game UI.</p>
+      <button id="start">Start</button>
+    </div>
+  </main>
+
+  <script>
+    // Supabase placeholders — replace or provide via config.local.js (gitignored)
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY_HERE';
+
+    document.getElementById('start').addEventListener('click',()=>{
+      alert('Chromatic MVP placeholder — game not yet implemented.');
+    });
+  </script>
+</body>
+</html>
