@@ -1,9 +1,9 @@
 # Changelog
 
 ## 2026-05-25
-- Wired Supabase leaderboard config into `index.html`
-- Pushed Supabase configuration to `main`
-- Confirmed GitHub Pages live response 200 and new live content
+- Installed the full 1,398-line game from `chromatic.html` into `index.html`
+- Wired Supabase URL and legacy anon key into the live game
+- Confirmed GitHub Pages live response 200 with `CHROMATIC — The Color Perception Test` title
 
 ## 2026-05-24
 - Initial project scaffold: README, CLAUDE.md, CHANGELOG.md, .gitignore, .env.example
