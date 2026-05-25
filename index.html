@@ -1,64 +1,1399 @@
-<!--
-SQL: chromatic_leaderboard table and RLS policies
-
-CREATE TABLE chromatic_leaderboard (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  score integer NOT NULL,
-  time_ms integer NOT NULL,
-  played_at timestamptz DEFAULT now(),
-  metadata jsonb DEFAULT '{}'
-);
-
--- Example RLS: allow inserts from anonymous role but validate values
-ALTER TABLE chromatic_leaderboard ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "public_insert" ON chromatic_leaderboard
-  FOR INSERT
-  USING (true)
-  WITH CHECK (
-    name IS NOT NULL AND name <> '' AND score >= 0
-  );
-
--- Note: tighten policies for production; use Edge Function for anti-abuse
---
--- Supabase client placeholders below must be replaced with real values
---
--- END SQL
--->
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>Chromatic — Viral Color Perception Test</title>
-  <style>
-    body{font-family:system-ui,apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;margin:1rem}
-    header{display:flex;align-items:center;gap:1rem}
-    .board{margin-top:1rem}
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<title>CHROMATIC — The Color Perception Test</title>
+<meta name="description" content="A clinical-grade color perception test inspired by the Farnsworth-Munsell 100 Hue Test. 30 levels. Most people fail." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+<!--
+  ============================================================
+  SUPABASE CONFIG — REPLACE THESE TWO VALUES
+  ============================================================
+  1. Create a project at https://supabase.com
+  2. Create a table named "chromatic_leaderboard" with columns:
+       id          uuid       primary key default gen_random_uuid()
+       created_at  timestamptz default now()
+       name        text       not null
+       country     text       not null  (ISO 2-letter code, e.g. "HU")
+       score       int        not null
+       time_ms     int        not null
+       accuracy    int        not null
+       profile     text       not null
+  3. Enable Row Level Security, then add a policy:
+       - SELECT: allow anonymous (so the leaderboard reads)
+       - INSERT: allow anonymous (so scores can post)
+  4. Paste your Project URL and anon key below.
+  ============================================================
+-->
+<script>
+  const SUPABASE_URL = "https://roapaipirbcaefnclxgj.supabase.co";       // e.g. "https://abcdefgh.supabase.co"
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvYXBhaXBpcmJjYWVmbmNseGdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NTY4ODMsImV4cCI6MjA5NTIzMjg4M30.41dxEj5rg4dtaE5ShLtSFbuv7S9cQ_25ppN0B8-PKjw"; // public anon key
+  const SUPABASE_TABLE = "chromatic_leaderboard";
+</script>
+
+<style>
+  :root {
+    --bg: #0a0a0b;
+    --bg-elev: #131316;
+    --bg-card: #18181c;
+    --ink: #f4f0e8;
+    --ink-dim: #a8a39a;
+    --ink-faint: #555048;
+    --line: #26252a;
+    --line-soft: #1c1b20;
+    --accent: #e8c547;          /* warm gold, like a calibration target */
+    --accent-soft: #b39a3a;
+    --danger: #d9534f;
+    --success: #6fbf73;
+    --serif: "Fraunces", "Times New Roman", serif;
+    --mono: "JetBrains Mono", "Courier New", monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-feature-settings: "ss01", "ss02";
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(232, 197, 71, 0.06), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(232, 197, 71, 0.04), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+  }
+
+  /* subtle film grain */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .container {
+    position: relative;
+    z-index: 2;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 32px;
+  }
+
+  /* ---------- screens ---------- */
+  .screen { display: none; animation: fadeUp 0.6s ease both; }
+  .screen.active { display: block; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ---------- intro ---------- */
+  .brand {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 64px;
+  }
+  .brand-mark {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+  .brand-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+    box-shadow: 0 0 12px var(--accent);
+  }
+
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 24px;
+  }
+
+  h1.title {
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: clamp(56px, 11vw, 148px);
+    line-height: 0.92;
+    letter-spacing: -0.04em;
+    margin-bottom: 32px;
+  }
+  h1.title em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--accent);
+  }
+
+  .hero-lede {
+    max-width: 620px;
+    font-size: 20px;
+    line-height: 1.55;
+    color: var(--ink-dim);
+    margin-bottom: 48px;
+    font-weight: 300;
+  }
+  .hero-lede strong { color: var(--ink); font-weight: 500; }
+
+  .credibility {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin-bottom: 56px;
+  }
+  .cred-cell {
+    background: var(--bg);
+    padding: 24px 20px;
+  }
+  .cred-num {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 40px;
+    font-weight: 400;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .cred-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  .science-note {
+    border-left: 2px solid var(--accent);
+    padding: 4px 0 4px 20px;
+    margin-bottom: 56px;
+    max-width: 620px;
+  }
+  .science-note-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .science-note p {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--ink-dim);
+    font-weight: 300;
+  }
+  .science-note p em { color: var(--ink); font-style: italic; }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 18px 36px;
+    background: var(--accent);
+    color: #1a1505;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .btn:hover { background: #f3d35a; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(232, 197, 71, 0.25); }
+  .btn:active { transform: translateY(0); }
+  .btn.ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line);
+  }
+  .btn.ghost:hover { background: var(--bg-elev); border-color: var(--ink-dim); box-shadow: none; }
+  .btn .arrow { transition: transform 0.2s ease; }
+  .btn:hover .arrow { transform: translateX(4px); }
+
+  .button-row { display: flex; gap: 16px; flex-wrap: wrap; }
+
+  /* ---------- game screen ---------- */
+  .hud {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 40px;
+    gap: 16px;
+  }
+  .hud-left, .hud-right {
+    display: flex;
+    gap: 28px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+  .hud-right { justify-content: flex-end; }
+  .hud-stat-label { display: block; font-size: 9px; color: var(--ink-faint); margin-bottom: 4px; }
+  .hud-stat-value { color: var(--ink); font-size: 18px; font-family: var(--serif); letter-spacing: 0; text-transform: none; }
+  .hud-stat-value.accent { color: var(--accent); }
+  .hud-center {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 14px;
+    color: var(--ink-faint);
+    text-align: center;
+  }
+
+  .timer-bar {
+    height: 2px;
+    background: var(--line);
+    margin-bottom: 48px;
+    position: relative;
+    overflow: hidden;
+  }
+  .timer-fill {
+    position: absolute;
+    inset: 0 100% 0 0;
+    background: var(--accent);
+    transition: right 0.1s linear;
+  }
+  .timer-fill.warn { background: var(--danger); }
+
+  .level-header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  .level-eyebrow {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 12px;
+  }
+  .level-prompt {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(28px, 4vw, 44px);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+  .level-prompt em { color: var(--accent); font-style: italic; }
+
+  .grid {
+    display: grid;
+    gap: 8px;
+    max-width: 720px;
+    margin: 0 auto 48px;
+    aspect-ratio: 1 / 1;
+  }
+  .swatch {
+    border: none;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    position: relative;
+    outline: none;
+    padding: 0;
+  }
+  .swatch:hover {
+    transform: scale(1.04);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 2;
+  }
+  .swatch.correct {
+    animation: pulseCorrect 0.6s ease;
+    box-shadow: 0 0 0 3px var(--success), 0 0 32px rgba(111, 191, 115, 0.5);
+    z-index: 3;
+  }
+  .swatch.wrong {
+    animation: shakeWrong 0.5s ease;
+    box-shadow: 0 0 0 3px var(--danger);
+    z-index: 3;
+  }
+  .swatch.reveal {
+    box-shadow: 0 0 0 3px var(--accent), 0 0 32px rgba(232, 197, 71, 0.5);
+    z-index: 3;
+  }
+
+  @keyframes pulseCorrect {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+  }
+  @keyframes shakeWrong {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+  }
+
+  .streak-badge {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    padding: 12px 18px;
+    background: var(--bg-card);
+    border: 1px solid var(--accent);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    transform: translateY(-100px);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 100;
+    pointer-events: none;
+  }
+  .streak-badge.show { transform: translateY(0); }
+  .streak-badge .big {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-style: italic;
+    color: var(--ink);
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+
+  .feedback-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .feedback-overlay.show { opacity: 1; }
+  .feedback-text {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: clamp(80px, 14vw, 200px);
+    font-weight: 300;
+    color: var(--accent);
+    letter-spacing: -0.04em;
+    text-shadow: 0 0 80px rgba(232, 197, 71, 0.4);
+  }
+  .feedback-text.miss { color: var(--danger); text-shadow: 0 0 80px rgba(217, 83, 79, 0.4); }
+
+  /* ---------- result screen ---------- */
+  .result-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 20px;
+  }
+  .result-label {
+    font-family: var(--serif);
+    font-weight: 300;
+    font-style: italic;
+    font-size: clamp(48px, 9vw, 112px);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    margin-bottom: 24px;
+  }
+  .result-tier {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 48px;
+  }
+  .result-tier .accent { color: var(--accent); }
+
+  .score-headline {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin-bottom: 56px;
+  }
+  .score-cell {
+    background: var(--bg);
+    padding: 28px 24px;
+  }
+  .score-cell-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 10px;
+  }
+  .score-cell-value {
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: 42px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .score-cell-value .unit {
+    font-size: 14px;
+    color: var(--ink-faint);
+    margin-left: 4px;
+    font-family: var(--mono);
+    letter-spacing: 0;
+  }
+
+  .subscores {
+    margin-bottom: 56px;
+  }
+  .subscores-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 24px;
+  }
+  .sub-row {
+    display: grid;
+    grid-template-columns: 200px 1fr 80px;
+    gap: 20px;
+    align-items: center;
+    padding: 18px 0;
+    border-top: 1px solid var(--line-soft);
+  }
+  .sub-row:last-child { border-bottom: 1px solid var(--line-soft); }
+  .sub-name {
+    font-family: var(--serif);
+    font-size: 17px;
+    font-style: italic;
+    font-weight: 400;
+  }
+  .sub-bar {
+    height: 4px;
+    background: var(--bg-elev);
+    position: relative;
+  }
+  .sub-bar-fill {
+    position: absolute;
+    inset: 0 100% 0 0;
+    background: var(--accent);
+    transition: right 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .sub-val {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--ink);
+    text-align: right;
+  }
+
+  .submit-form {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    padding: 32px;
+    margin-bottom: 56px;
+  }
+  .submit-form-title {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 24px;
+    margin-bottom: 8px;
+  }
+  .submit-form-sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 24px;
+  }
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 12px;
+  }
+  .input {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 14px 16px;
+    font-family: var(--serif);
+    font-size: 16px;
+    outline: none;
+    transition: border-color 0.2s ease;
+  }
+  .input:focus { border-color: var(--accent); }
+  .input::placeholder { color: var(--ink-faint); font-style: italic; }
+
+  /* ---------- leaderboard ---------- */
+  .lb-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 32px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .lb-title {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(36px, 5vw, 56px);
+    letter-spacing: -0.02em;
+  }
+  .lb-sub {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  .lb-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .lb-table th {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 400;
+    text-align: left;
+    padding: 14px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .lb-table th.num, .lb-table td.num { text-align: right; font-family: var(--mono); }
+  .lb-table td {
+    padding: 18px 12px;
+    border-bottom: 1px solid var(--line-soft);
+    font-family: var(--serif);
+    font-size: 17px;
+  }
+  .lb-rank {
+    font-family: var(--mono);
+    color: var(--ink-faint);
+    width: 50px;
+  }
+  .lb-rank.top { color: var(--accent); font-weight: 500; }
+  .lb-flag { font-size: 22px; margin-right: 10px; }
+  .lb-name { font-style: italic; }
+  .lb-score { color: var(--accent); font-weight: 500; }
+  .lb-empty {
+    text-align: center;
+    padding: 64px 20px;
+    color: var(--ink-dim);
+    font-style: italic;
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 720px) {
+    .container { padding: 32px 20px; }
+    .hud { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .hud-center { display: none; }
+    .hud-left, .hud-right { gap: 16px; }
+    .form-row { grid-template-columns: 1fr; }
+    .sub-row { grid-template-columns: 120px 1fr 60px; gap: 12px; }
+    .sub-name { font-size: 14px; }
+  }
+
+  /* helpers */
+  .small-link {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 2px;
+    transition: color 0.2s ease, border-color 0.2s ease;
+    cursor: pointer;
+    background: none;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+  }
+  .small-link:hover { color: var(--accent); border-color: var(--accent); }
+  .footer-row { margin-top: 48px; display: flex; gap: 28px; justify-content: center; }
+
+  .submit-status {
+    margin-top: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    min-height: 16px;
+  }
+  .submit-status.success { color: var(--success); }
+  .submit-status.error { color: var(--danger); }
+</style>
 </head>
 <body>
-  <header>
-    <h1>Chromatic</h1>
-    <p>A Farnsworth-Munsell inspired color perception test.</p>
-  </header>
-  <main>
-    <div class="board">
-      <p>Placeholder MVP. Replace with game UI.</p>
-      <button id="start">Start</button>
+
+<!-- streak badge (fixed) -->
+<div class="streak-badge" id="streakBadge">
+  <span class="big" id="streakNum">3</span>STREAK · +<span id="streakBonus">50</span>
+</div>
+
+<!-- feedback overlay -->
+<div class="feedback-overlay" id="feedback">
+  <div class="feedback-text" id="feedbackText">PERFECT</div>
+</div>
+
+<div class="container">
+
+<!-- ============================================================
+     INTRO SCREEN
+     ============================================================ -->
+<section class="screen active" id="screen-intro">
+  <div class="brand">
+    <div class="brand-mark"><span class="brand-dot"></span>Chromatic — Perception Lab</div>
+    <div class="brand-mark">Test No. 001</div>
+  </div>
+
+  <div class="hero-eyebrow">A test of chromatic discrimination</div>
+  <h1 class="title">Designers <em>see</em><br/>what others miss.</h1>
+  <p class="hero-lede">
+    Thirty grids. One swatch in each is <strong>slightly different</strong>. The differences begin obvious and end nearly invisible — 2% saturation, 3 degrees of hue. Artists and designers tend to ace this. <strong>Most people fail completely.</strong>
+  </p>
+
+  <div class="credibility">
+    <div class="cred-cell">
+      <div class="cred-num">30</div>
+      <div class="cred-label">Levels of escalating difficulty</div>
     </div>
-  </main>
+    <div class="cred-cell">
+      <div class="cred-num">3°</div>
+      <div class="cred-label">Final hue delta — expert tier</div>
+    </div>
+    <div class="cred-cell">
+      <div class="cred-num">&lt;9%</div>
+      <div class="cred-label">Reach the tetrachromat range</div>
+    </div>
+  </div>
 
-  <script>
-    // Supabase placeholders — replace or provide via config.local.js (gitignored)
-    const SUPABASE_URL = 'https://roapaipirbcaefnclxgj.supabase.co/rest/v1/';
-    const SUPABASE_ANON_KEY = 'sb_publishable_eXkQ2K7D41mTqQyhnrNWJQ_SASpnm7N';
+  <div class="science-note">
+    <div class="science-note-label">The Science</div>
+    <p>
+      Adapted from the <em>Farnsworth-Munsell 100 Hue Test</em>, the clinical gold standard for color vision used by ophthalmologists, design schools, paint manufacturers, and quality-control labs. The test isolates three independent dimensions of chromatic perception — hue, saturation, and lightness — to produce a profile of how your visual system processes color.
+    </p>
+  </div>
 
-    document.getElementById('start').addEventListener('click',()=>{
-      alert('Chromatic MVP placeholder — game not yet implemented.');
+  <div class="button-row">
+    <button class="btn" onclick="startGame()">
+      Begin the test
+      <span class="arrow">→</span>
+    </button>
+    <button class="btn ghost" onclick="showScreen('leaderboard'); loadLeaderboard();">
+      View leaderboard
+    </button>
+  </div>
+</section>
+
+<!-- ============================================================
+     GAME SCREEN
+     ============================================================ -->
+<section class="screen" id="screen-game">
+  <div class="hud">
+    <div class="hud-left">
+      <div>
+        <span class="hud-stat-label">Level</span>
+        <span class="hud-stat-value" id="hudLevel">1 / 30</span>
+      </div>
+      <div>
+        <span class="hud-stat-label">Score</span>
+        <span class="hud-stat-value accent" id="hudScore">0</span>
+      </div>
+    </div>
+    <div class="hud-center" id="hudPhase">Calibration</div>
+    <div class="hud-right">
+      <div>
+        <span class="hud-stat-label">Streak</span>
+        <span class="hud-stat-value" id="hudStreak">0</span>
+      </div>
+      <div>
+        <span class="hud-stat-label">Time</span>
+        <span class="hud-stat-value" id="hudTime">10.0s</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="timer-bar"><div class="timer-fill" id="timerFill"></div></div>
+
+  <div class="level-header">
+    <div class="level-eyebrow" id="levelDimension">Hue · Sensitivity</div>
+    <div class="level-prompt">Find the <em>one</em> that doesn't belong.</div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+</section>
+
+<!-- ============================================================
+     RESULT SCREEN
+     ============================================================ -->
+<section class="screen" id="screen-result">
+  <div class="result-eyebrow">Your perception profile</div>
+  <h1 class="result-label" id="resultLabel">Tetrachromat-level vision</h1>
+  <div class="result-tier"><span class="accent" id="resultPercentile">Top 4%</span> · You see what the rest of us miss.</div>
+
+  <div class="score-headline">
+    <div class="score-cell">
+      <div class="score-cell-label">Total score</div>
+      <div class="score-cell-value" id="finalScore">0</div>
+    </div>
+    <div class="score-cell">
+      <div class="score-cell-label">Accuracy</div>
+      <div class="score-cell-value"><span id="finalAccuracy">0</span><span class="unit">%</span></div>
+    </div>
+    <div class="score-cell">
+      <div class="score-cell-label">Total time</div>
+      <div class="score-cell-value"><span id="finalTime">0.0</span><span class="unit">s</span></div>
+    </div>
+    <div class="score-cell">
+      <div class="score-cell-label">Best streak</div>
+      <div class="score-cell-value"><span id="finalStreak">0</span><span class="unit">×</span></div>
+    </div>
+  </div>
+
+  <div class="subscores">
+    <div class="subscores-title">Sub-dimensions</div>
+    <div class="sub-row">
+      <div class="sub-name">Hue Sensitivity</div>
+      <div class="sub-bar"><div class="sub-bar-fill" id="barHue"></div></div>
+      <div class="sub-val"><span id="valHue">0</span>%</div>
+    </div>
+    <div class="sub-row">
+      <div class="sub-name">Saturation Detection</div>
+      <div class="sub-bar"><div class="sub-bar-fill" id="barSat"></div></div>
+      <div class="sub-val"><span id="valSat">0</span>%</div>
+    </div>
+    <div class="sub-row">
+      <div class="sub-name">Lightness Discrimination</div>
+      <div class="sub-bar"><div class="sub-bar-fill" id="barLight"></div></div>
+      <div class="sub-val"><span id="valLight">0</span>%</div>
+    </div>
+  </div>
+
+  <div class="submit-form">
+    <div class="submit-form-title">Claim your place on the leaderboard</div>
+    <div class="submit-form-sub">Name + country · public</div>
+    <div class="form-row">
+      <input class="input" id="inputName" type="text" maxlength="20" placeholder="Your name" />
+      <select class="input" id="inputCountry"></select>
+      <button class="btn" onclick="submitScore()">Submit</button>
+    </div>
+    <div class="submit-status" id="submitStatus"></div>
+  </div>
+
+  <div class="button-row">
+    <button class="btn ghost" onclick="resetGame()">Try again</button>
+    <button class="btn ghost" onclick="showScreen('leaderboard'); loadLeaderboard();">Leaderboard</button>
+    <button class="btn ghost" onclick="shareResult()">Share result</button>
+  </div>
+</section>
+
+<!-- ============================================================
+     LEADERBOARD SCREEN
+     ============================================================ -->
+<section class="screen" id="screen-leaderboard">
+  <div class="lb-header">
+    <div class="lb-title">Global <em>leaderboard</em></div>
+    <div class="lb-sub">Top 50 · Live</div>
+  </div>
+
+  <table class="lb-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Player</th>
+        <th>Profile</th>
+        <th class="num">Score</th>
+        <th class="num">Time</th>
+        <th class="num">Acc.</th>
+      </tr>
+    </thead>
+    <tbody id="lbBody">
+      <tr><td colspan="6" class="lb-empty">Loading…</td></tr>
+    </tbody>
+  </table>
+
+  <div class="footer-row">
+    <button class="small-link" onclick="showScreen('intro')">← Back to test</button>
+    <button class="small-link" onclick="loadLeaderboard()">Refresh</button>
+  </div>
+</section>
+
+</div>
+
+<script>
+/* ==========================================================
+   COUNTRY LIST (ISO 3166-1 alpha-2 → flag emoji)
+   ========================================================== */
+const COUNTRIES = [
+  ["AR","Argentina"],["AU","Australia"],["AT","Austria"],["BE","Belgium"],["BR","Brazil"],
+  ["BG","Bulgaria"],["CA","Canada"],["CL","Chile"],["CN","China"],["CO","Colombia"],
+  ["HR","Croatia"],["CZ","Czechia"],["DK","Denmark"],["EG","Egypt"],["FI","Finland"],
+  ["FR","France"],["DE","Germany"],["GR","Greece"],["HK","Hong Kong"],["HU","Hungary"],
+  ["IS","Iceland"],["IN","India"],["ID","Indonesia"],["IE","Ireland"],["IL","Israel"],
+  ["IT","Italy"],["JP","Japan"],["KZ","Kazakhstan"],["KR","South Korea"],["LV","Latvia"],
+  ["LT","Lithuania"],["MY","Malaysia"],["MX","Mexico"],["NL","Netherlands"],["NZ","New Zealand"],
+  ["NG","Nigeria"],["NO","Norway"],["PK","Pakistan"],["PE","Peru"],["PH","Philippines"],
+  ["PL","Poland"],["PT","Portugal"],["RO","Romania"],["RU","Russia"],["SA","Saudi Arabia"],
+  ["RS","Serbia"],["SG","Singapore"],["SK","Slovakia"],["SI","Slovenia"],["ZA","South Africa"],
+  ["ES","Spain"],["SE","Sweden"],["CH","Switzerland"],["TW","Taiwan"],["TH","Thailand"],
+  ["TR","Turkey"],["UA","Ukraine"],["AE","UAE"],["GB","United Kingdom"],["US","United States"],
+  ["UY","Uruguay"],["VN","Vietnam"]
+];
+
+function countryToFlag(iso) {
+  if (!iso || iso.length !== 2) return "🏳";
+  return String.fromCodePoint(...iso.toUpperCase().split('').map(c => 127397 + c.charCodeAt(0)));
+}
+
+(function populateCountries() {
+  const sel = document.getElementById('inputCountry');
+  // try to default to user's locale country via navigator.language
+  const lang = (navigator.language || '').toUpperCase();
+  const localeGuess = lang.split('-')[1] || '';
+  COUNTRIES.forEach(([code, name]) => {
+    const opt = document.createElement('option');
+    opt.value = code;
+    opt.textContent = `${countryToFlag(code)}  ${name}`;
+    if (code === localeGuess) opt.selected = true;
+    sel.appendChild(opt);
+  });
+})();
+
+/* ==========================================================
+   LEVEL GENERATION
+   ----------------------------------------------------------
+   30 levels cycling through three dimensions:
+     - hue:        same S & L, swap H by `delta` degrees
+     - saturation: same H & L, change S by `delta` percent
+     - lightness:  same H & S, change L by `delta` percent
+   Grid size grows from 3x3 → 4x4 → 5x5 → 6x6 as levels rise.
+   Time pressure shrinks from 12s → 5s.
+   ========================================================== */
+
+const TOTAL_LEVELS = 30;
+const DIMENSIONS = ['hue', 'saturation', 'lightness'];
+
+// hand-tuned curve so it's genuinely hard at the end
+function levelConfig(level) {
+  // level: 1..30
+  const t = (level - 1) / (TOTAL_LEVELS - 1); // 0..1
+
+  // dimension rotates so each appears 10 times, interleaved
+  const dim = DIMENSIONS[(level - 1) % 3];
+
+  // delta curve — eased exponential decay
+  let delta;
+  if (dim === 'hue') {
+    // 45° → 3°
+    delta = 45 * Math.pow(0.06, t);
+    delta = Math.max(3, delta);
+  } else if (dim === 'saturation') {
+    // 40% → 2%
+    delta = 40 * Math.pow(0.05, t);
+    delta = Math.max(2, delta);
+  } else { // lightness
+    // 35% → 2%
+    delta = 35 * Math.pow(0.057, t);
+    delta = Math.max(2, delta);
+  }
+
+  // grid size grows
+  let gridSize;
+  if (level <= 6) gridSize = 3;
+  else if (level <= 14) gridSize = 4;
+  else if (level <= 22) gridSize = 5;
+  else gridSize = 6;
+
+  // time shrinks
+  const time = Math.max(5, 12 - (level - 1) * 0.25);
+
+  return { level, dim, delta, gridSize, time };
+}
+
+// random base color, but constrained to mid-saturation, mid-lightness for fairness
+function generateBaseColor(dim) {
+  const hue = Math.floor(Math.random() * 360);
+
+  // for hue tests, keep saturation healthy so hue shifts are visible
+  // for saturation tests, start near a mid-high so we have room to move down
+  // for lightness tests, start near mid so we can move either direction
+  let sat, light;
+  if (dim === 'hue') {
+    sat = 55 + Math.random() * 20;   // 55..75
+    light = 45 + Math.random() * 15; // 45..60
+  } else if (dim === 'saturation') {
+    sat = 50 + Math.random() * 25;   // 50..75
+    light = 45 + Math.random() * 15;
+  } else {
+    sat = 30 + Math.random() * 30;   // muted so lightness reads clearly
+    light = 45 + Math.random() * 10;
+  }
+  return { h: hue, s: sat, l: light };
+}
+
+function applyDelta(base, dim, delta) {
+  const out = { ...base };
+  // random sign for sat/light (both directions plausible); hue can rotate either way too
+  const sign = Math.random() < 0.5 ? -1 : 1;
+  if (dim === 'hue') {
+    out.h = (base.h + sign * delta + 360) % 360;
+  } else if (dim === 'saturation') {
+    // clamp so we don't fall off the edge — flip sign if needed
+    let target = base.s + sign * delta;
+    if (target < 8) target = base.s + delta;
+    if (target > 95) target = base.s - delta;
+    out.s = target;
+  } else {
+    let target = base.l + sign * delta;
+    if (target < 15) target = base.l + delta;
+    if (target > 85) target = base.l - delta;
+    out.l = target;
+  }
+  return out;
+}
+
+function hslStr(c) { return `hsl(${c.h.toFixed(2)}, ${c.s.toFixed(2)}%, ${c.l.toFixed(2)}%)`; }
+
+/* ==========================================================
+   GAME STATE
+   ========================================================== */
+let state = null;
+
+function freshState() {
+  return {
+    level: 1,
+    score: 0,
+    streak: 0,
+    bestStreak: 0,
+    correctCount: 0,
+    startedAt: 0,
+    elapsedMs: 0,
+    // per-dimension tracking
+    perDim: {
+      hue:        { correct: 0, total: 0 },
+      saturation: { correct: 0, total: 0 },
+      lightness:  { correct: 0, total: 0 },
+    },
+    // current question runtime
+    current: null,
+    timerHandle: null,
+    timerStart: 0,
+    timerDuration: 0,
+    locked: false,
+  };
+}
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function startGame() {
+  state = freshState();
+  state.startedAt = performance.now();
+  showScreen('game');
+  renderLevel();
+}
+
+function resetGame() {
+  startGame();
+}
+
+/* ==========================================================
+   LEVEL RENDERING
+   ========================================================== */
+
+const PHASE_LABELS = [
+  { until: 6,  label: 'Calibration' },
+  { until: 14, label: 'Discrimination' },
+  { until: 22, label: 'Acuity' },
+  { until: 30, label: 'Expert range' },
+];
+function phaseFor(level) {
+  for (const p of PHASE_LABELS) if (level <= p.until) return p.label;
+  return 'Expert range';
+}
+
+const DIM_LABEL = {
+  hue:        'Hue · Sensitivity',
+  saturation: 'Saturation · Detection',
+  lightness:  'Lightness · Discrimination',
+};
+
+function renderLevel() {
+  const cfg = levelConfig(state.level);
+  const base = generateBaseColor(cfg.dim);
+  const odd  = applyDelta(base, cfg.dim, cfg.delta);
+  const cells = cfg.gridSize * cfg.gridSize;
+  const oddIndex = Math.floor(Math.random() * cells);
+
+  state.current = { cfg, base, odd, oddIndex, cells };
+  state.locked = false;
+
+  // HUD
+  document.getElementById('hudLevel').textContent = `${state.level} / ${TOTAL_LEVELS}`;
+  document.getElementById('hudScore').textContent = state.score.toLocaleString();
+  document.getElementById('hudStreak').textContent = state.streak;
+  document.getElementById('hudPhase').textContent = phaseFor(state.level);
+  document.getElementById('levelDimension').textContent = DIM_LABEL[cfg.dim];
+
+  // grid
+  const grid = document.getElementById('grid');
+  grid.style.gridTemplateColumns = `repeat(${cfg.gridSize}, 1fr)`;
+  grid.innerHTML = '';
+  for (let i = 0; i < cells; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'swatch';
+    btn.style.background = i === oddIndex ? hslStr(odd) : hslStr(base);
+    btn.setAttribute('aria-label', `Swatch ${i + 1}`);
+    btn.addEventListener('click', () => handleAnswer(i, btn));
+    grid.appendChild(btn);
+  }
+
+  // timer
+  startTimer(cfg.time);
+}
+
+function startTimer(seconds) {
+  state.timerDuration = seconds * 1000;
+  state.timerStart = performance.now();
+  const fill = document.getElementById('timerFill');
+  fill.classList.remove('warn');
+  fill.style.right = '100%';
+
+  cancelAnimationFrame(state.timerHandle);
+  const tick = () => {
+    const elapsed = performance.now() - state.timerStart;
+    const remaining = Math.max(0, state.timerDuration - elapsed);
+    const pct = (remaining / state.timerDuration) * 100;
+    fill.style.right = (100 - pct) + '%';
+    document.getElementById('hudTime').textContent = (remaining / 1000).toFixed(1) + 's';
+    if (remaining < state.timerDuration * 0.3) fill.classList.add('warn');
+    if (remaining <= 0) {
+      handleTimeout();
+      return;
+    }
+    state.timerHandle = requestAnimationFrame(tick);
+  };
+  state.timerHandle = requestAnimationFrame(tick);
+}
+
+function handleAnswer(index, btnEl) {
+  if (state.locked) return;
+  state.locked = true;
+  cancelAnimationFrame(state.timerHandle);
+
+  const { cfg, oddIndex } = state.current;
+  const correct = index === oddIndex;
+  const elapsedMs = performance.now() - state.timerStart;
+  const remainingMs = Math.max(0, state.timerDuration - elapsedMs);
+
+  state.perDim[cfg.dim].total++;
+
+  if (correct) {
+    state.correctCount++;
+    state.streak++;
+    state.bestStreak = Math.max(state.bestStreak, state.streak);
+    state.perDim[cfg.dim].correct++;
+
+    // scoring: base + speed bonus + streak bonus
+    const base = 100;
+    const speedBonus = Math.round((remainingMs / state.timerDuration) * 150);
+    const streakBonus = state.streak >= 3 ? (state.streak * 25) : 0;
+    const levelMultiplier = 1 + (state.level - 1) * 0.04; // up to ~2.16x at level 30
+    const gained = Math.round((base + speedBonus + streakBonus) * levelMultiplier);
+    state.score += gained;
+
+    btnEl.classList.add('correct');
+    flashFeedback(gained, false);
+
+    if (state.streak >= 3) showStreak(state.streak, streakBonus);
+  } else {
+    state.streak = 0;
+    btnEl.classList.add('wrong');
+    // reveal the right answer
+    const grid = document.getElementById('grid');
+    grid.children[oddIndex].classList.add('reveal');
+    flashFeedback('MISS', true);
+  }
+
+  setTimeout(() => {
+    state.level++;
+    if (state.level > TOTAL_LEVELS) {
+      endGame();
+    } else {
+      renderLevel();
+    }
+  }, correct ? 700 : 1100);
+}
+
+function handleTimeout() {
+  if (state.locked) return;
+  state.locked = true;
+  cancelAnimationFrame(state.timerHandle);
+  state.streak = 0;
+  state.perDim[state.current.cfg.dim].total++;
+
+  const grid = document.getElementById('grid');
+  grid.children[state.current.oddIndex].classList.add('reveal');
+  flashFeedback('TIME', true);
+
+  setTimeout(() => {
+    state.level++;
+    if (state.level > TOTAL_LEVELS) endGame(); else renderLevel();
+  }, 1100);
+}
+
+function flashFeedback(value, miss) {
+  const overlay = document.getElementById('feedback');
+  const text = document.getElementById('feedbackText');
+  text.textContent = miss ? value : `+${value}`;
+  text.classList.toggle('miss', miss);
+  overlay.classList.add('show');
+  setTimeout(() => overlay.classList.remove('show'), 500);
+}
+
+function showStreak(n, bonus) {
+  const badge = document.getElementById('streakBadge');
+  document.getElementById('streakNum').textContent = n;
+  document.getElementById('streakBonus').textContent = bonus;
+  badge.classList.add('show');
+  clearTimeout(showStreak._t);
+  showStreak._t = setTimeout(() => badge.classList.remove('show'), 1400);
+}
+
+/* ==========================================================
+   RESULT TIERING
+   ----------------------------------------------------------
+   Tiers are score-based but accuracy-gated.
+   ========================================================== */
+const TIERS = [
+  { min: 0.90, label: 'Tetrachromat-level vision',  percentile: 'Top 4%',  blurb: "You see what the rest of us miss." },
+  { min: 0.78, label: 'Designer-grade eye',         percentile: 'Top 12%', blurb: "Your visual cortex is doing professional work." },
+  { min: 0.65, label: 'Painter\u2019s perception',  percentile: 'Top 25%', blurb: "Unusually fine-grained chromatic sensitivity." },
+  { min: 0.50, label: 'Refined chromatic sense',    percentile: 'Top 45%', blurb: "Above average — you pick up on subtle shifts." },
+  { min: 0.35, label: 'Standard human vision',      percentile: 'Top 70%', blurb: "Solid baseline perception." },
+  { min: 0.00, label: 'Functional color vision',    percentile: '—',        blurb: "Color is more elusive than it looks." },
+];
+
+function tierFor(accuracy01) {
+  for (const t of TIERS) if (accuracy01 >= t.min) return t;
+  return TIERS[TIERS.length - 1];
+}
+
+function endGame() {
+  state.elapsedMs = performance.now() - state.startedAt;
+  const accuracy = state.correctCount / TOTAL_LEVELS; // 0..1
+  const accuracyPct = Math.round(accuracy * 100);
+  const tier = tierFor(accuracy);
+
+  document.getElementById('resultLabel').textContent = tier.label;
+  document.getElementById('resultPercentile').textContent = tier.percentile;
+  document.querySelector('#screen-result .result-tier').innerHTML =
+    `<span class="accent">${tier.percentile}</span> · ${tier.blurb}`;
+
+  document.getElementById('finalScore').textContent = state.score.toLocaleString();
+  document.getElementById('finalAccuracy').textContent = accuracyPct;
+  document.getElementById('finalTime').textContent = (state.elapsedMs / 1000).toFixed(1);
+  document.getElementById('finalStreak').textContent = state.bestStreak;
+
+  // sub-scores
+  const subPct = (dim) => {
+    const d = state.perDim[dim];
+    return d.total === 0 ? 0 : Math.round((d.correct / d.total) * 100);
+  };
+  const hPct = subPct('hue');
+  const sPct = subPct('saturation');
+  const lPct = subPct('lightness');
+
+  document.getElementById('valHue').textContent = hPct;
+  document.getElementById('valSat').textContent = sPct;
+  document.getElementById('valLight').textContent = lPct;
+
+  // animate after screen shows
+  showScreen('result');
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      document.getElementById('barHue').style.right = (100 - hPct) + '%';
+      document.getElementById('barSat').style.right = (100 - sPct) + '%';
+      document.getElementById('barLight').style.right = (100 - lPct) + '%';
+    }, 120);
+  });
+
+  // stash for submission
+  state.finalProfile = tier.label;
+  state.finalAccuracy = accuracyPct;
+}
+
+/* ==========================================================
+   SUPABASE — LEADERBOARD
+   ========================================================== */
+function supabaseConfigured() {
+  return SUPABASE_URL &&
+         SUPABASE_URL !== "YOUR_SUPABASE_URL_HERE" &&
+         SUPABASE_ANON_KEY &&
+         SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY_HERE";
+}
+
+async function submitScore() {
+  const statusEl = document.getElementById('submitStatus');
+  statusEl.className = 'submit-status';
+  statusEl.textContent = '';
+
+  const name = document.getElementById('inputName').value.trim().slice(0, 20);
+  const country = document.getElementById('inputCountry').value;
+  if (!name) {
+    statusEl.classList.add('error');
+    statusEl.textContent = 'Name required.';
+    return;
+  }
+
+  if (!supabaseConfigured()) {
+    statusEl.classList.add('error');
+    statusEl.textContent = 'Leaderboard offline — Supabase not configured.';
+    return;
+  }
+
+  const payload = {
+    name,
+    country,
+    score: state.score,
+    time_ms: Math.round(state.elapsedMs),
+    accuracy: state.finalAccuracy,
+    profile: state.finalProfile,
+  };
+
+  statusEl.textContent = 'Submitting…';
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify(payload),
     });
-  </script>
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`${res.status} ${errText}`);
+    }
+
+    statusEl.classList.add('success');
+    statusEl.textContent = 'Submitted. Welcome to the board.';
+    setTimeout(() => { showScreen('leaderboard'); loadLeaderboard(); }, 900);
+  } catch (err) {
+    console.error(err);
+    statusEl.classList.add('error');
+    statusEl.textContent = 'Submission failed. Try again.';
+  }
+}
+
+async function loadLeaderboard() {
+  const body = document.getElementById('lbBody');
+  body.innerHTML = `<tr><td colspan="6" class="lb-empty">Loading…</td></tr>`;
+
+  if (!supabaseConfigured()) {
+    body.innerHTML = `<tr><td colspan="6" class="lb-empty">Leaderboard is offline — Supabase credentials not yet configured.</td></tr>`;
+    return;
+  }
+
+  try {
+    // sort by score desc, then time_ms asc (faster breaks ties)
+    const url = `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}` +
+                `?select=name,country,score,time_ms,accuracy,profile` +
+                `&order=score.desc,time_ms.asc&limit=50`;
+    const res = await fetch(url, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+    });
+    if (!res.ok) throw new Error(res.status);
+    const rows = await res.json();
+
+    if (!rows.length) {
+      body.innerHTML = `<tr><td colspan="6" class="lb-empty">No entries yet. Be the first.</td></tr>`;
+      return;
+    }
+
+    body.innerHTML = rows.map((r, i) => {
+      const rankClass = i < 3 ? 'lb-rank top' : 'lb-rank';
+      const flag = countryToFlag(r.country);
+      const escName = (r.name || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+      const escProfile = (r.profile || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+      const timeS = (r.time_ms / 1000).toFixed(1);
+      return `
+        <tr>
+          <td class="${rankClass}">${String(i + 1).padStart(2, '0')}</td>
+          <td><span class="lb-flag">${flag}</span><span class="lb-name">${escName}</span></td>
+          <td><span style="color: var(--ink-dim); font-style: italic; font-size: 14px;">${escProfile}</span></td>
+          <td class="num lb-score">${r.score.toLocaleString()}</td>
+          <td class="num" style="color: var(--ink-dim);">${timeS}s</td>
+          <td class="num" style="color: var(--ink-dim);">${r.accuracy}%</td>
+        </tr>`;
+    }).join('');
+  } catch (err) {
+    console.error(err);
+    body.innerHTML = `<tr><td colspan="6" class="lb-empty">Could not load leaderboard.</td></tr>`;
+  }
+}
+
+/* ==========================================================
+   SHARE
+   ========================================================== */
+function shareResult() {
+  const text = `I scored ${state.score.toLocaleString()} on Chromatic — "${state.finalProfile}" (${state.finalAccuracy}% accuracy). Can you beat me?`;
+  if (navigator.share) {
+    navigator.share({ title: 'Chromatic — Color Perception Test', text }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text);
+    const s = document.getElementById('submitStatus');
+    s.className = 'submit-status success';
+    s.textContent = 'Copied to clipboard.';
+    setTimeout(() => { s.textContent = ''; }, 2000);
+  }
+}
+</script>
+
 </body>
 </html>
