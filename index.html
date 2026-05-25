@@ -1031,6 +1031,7 @@ function freshState() {
     timerDuration: 0,
     advanceTimer: null,
     advanceFallbackTimer: null,
+    watchdogTimer: null,
     locked: false,
   };
 }
@@ -1038,8 +1039,10 @@ function freshState() {
 function clearAdvanceTimers() {
   clearTimeout(state.advanceTimer);
   clearTimeout(state.advanceFallbackTimer);
+  clearTimeout(state.watchdogTimer);
   state.advanceTimer = null;
   state.advanceFallbackTimer = null;
+  state.watchdogTimer = null;
 }
 
 function advanceLevel() {
@@ -1055,10 +1058,37 @@ function advanceLevel() {
 
 function scheduleLevelAdvance(delay) {
   clearAdvanceTimers();
-  state.advanceTimer = setTimeout(advanceLevel, delay);
+  state.advanceTimer = setTimeout(() => {
+    try {
+      advanceLevel();
+    } catch (err) {
+      console.error('advanceLevel failed', err);
+      if (state.level > TOTAL_LEVELS) {
+        endGame();
+      } else {
+        renderLevel();
+      }
+    }
+  }, delay);
+
   state.advanceFallbackTimer = setTimeout(() => {
-    if (state.locked) advanceLevel();
+    if (state.locked) {
+      console.warn('advanceFallback triggered');
+      advanceLevel();
+    }
   }, 2000);
+
+  state.watchdogTimer = setTimeout(() => {
+    const resultScreen = document.getElementById('screen-result');
+    if (state.locked && (!resultScreen || !resultScreen.classList.contains('active'))) {
+      console.warn('level advance watchdog forcing transition');
+      if (state.level > TOTAL_LEVELS) {
+        endGame();
+      } else {
+        advanceLevel();
+      }
+    }
+  }, 3000);
 }
 
 function showScreen(name) {
@@ -1252,6 +1282,7 @@ function tierFor(accuracy01) {
 }
 
 function endGame() {
+  console.log('endGame fired');
   state.elapsedMs = performance.now() - state.startedAt;
   const accuracy = state.correctCount / TOTAL_LEVELS; // 0..1
   const accuracyPct = Math.round(accuracy * 100);
