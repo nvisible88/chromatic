@@ -6,3 +6,6 @@ node_modules/
 .vscode/
 .idea/
 config.local.js
+.env.*
+.claude/projects/
+.claude/settings.local.json
