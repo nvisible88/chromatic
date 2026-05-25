@@ -3,6 +3,7 @@
 ## 2026-05-25
 - Installed the full 1,398-line game from `chromatic.html` into `index.html`
 - Wired Supabase URL and legacy anon key into the live game
+- Added a downloadable 1080x1350 share card generator for finished results
 - Confirmed GitHub Pages live response 200 with `CHROMATIC — The Color Perception Test` title
 
 ## 2026-05-24

@@ -819,6 +819,7 @@
     <button class="btn ghost" onclick="resetGame()">Try again</button>
     <button class="btn ghost" onclick="showScreen('leaderboard'); loadLeaderboard();">Leaderboard</button>
     <button class="btn ghost" onclick="shareResult()">Share result</button>
+    <button class="btn ghost" onclick="downloadShareCard()">Download share card</button>
   </div>
 </section>
 
@@ -1381,6 +1382,147 @@ async function loadLeaderboard() {
 /* ==========================================================
    SHARE
    ========================================================== */
+function downloadShareCard() {
+  const s = document.getElementById('submitStatus');
+  s.className = 'submit-status';
+  s.textContent = 'Creating share card…';
+  createShareCardBlob().then(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'chromatic-result.png';
+    a.click();
+    URL.revokeObjectURL(url);
+    s.className = 'submit-status success';
+    s.textContent = 'Share card downloaded.';
+    setTimeout(() => { s.textContent = ''; }, 2500);
+  }).catch(err => {
+    console.error(err);
+    s.className = 'submit-status error';
+    s.textContent = 'Could not generate share card.';
+  });
+}
+
+async function createShareCardBlob() {
+  if (document.fonts && document.fonts.ready) await document.fonts.ready;
+
+  const width = 1080;
+  const height = 1350;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const bg = '#0a0a0b';
+  const gold = '#e8c547';
+  const ink = '#f4f0e8';
+  const dim = '#a8a39a';
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.fillStyle = gold;
+  ctx.font = '700 42px "Fraunces", serif';
+  ctx.fillText('CHROMATIC', width / 2, 90);
+
+  ctx.fillStyle = dim;
+  ctx.font = '600 22px "JetBrains Mono", monospace';
+  ctx.fillText('YOUR PERCEPTION PROFILE', width / 2, 150);
+
+  const resultLabel = document.getElementById('resultLabel').textContent;
+  ctx.fillStyle = gold;
+  ctx.font = 'italic 72px "Fraunces", serif';
+  drawWrappedText(ctx, resultLabel, width / 2, 240, 860, 78);
+
+  const resultTier = document.querySelector('#screen-result .result-tier').textContent.trim();
+  ctx.fillStyle = ink;
+  ctx.font = '500 28px "Fraunces", serif';
+  drawWrappedText(ctx, resultTier, width / 2, 340, 860, 40);
+
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(120, 390);
+  ctx.lineTo(width - 120, 390);
+  ctx.stroke();
+
+  const score = document.getElementById('finalScore').textContent;
+  const accuracy = document.getElementById('finalAccuracy').textContent + '%';
+  const time = document.getElementById('finalTime').textContent + 's';
+  const scoreLabels = ['Total score', 'Accuracy', 'Time'];
+  const scoreValues = [score, accuracy, time];
+  const columnX = [width * 0.2, width * 0.5, width * 0.8];
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = dim;
+    ctx.font = '500 24px "JetBrains Mono", monospace';
+    ctx.fillText(scoreLabels[i].toUpperCase(), columnX[i], 460);
+    ctx.fillStyle = ink;
+    ctx.font = '700 52px "Fraunces", serif';
+    ctx.fillText(scoreValues[i], columnX[i], 530);
+  }
+
+  const barTop = 620;
+  const barLines = [0, 1, 2];
+  const barNames = ['Hue', 'Saturation', 'Lightness'];
+  const barValues = [
+    parseInt(document.getElementById('valHue').textContent, 10),
+    parseInt(document.getElementById('valSat').textContent, 10),
+    parseInt(document.getElementById('valLight').textContent, 10),
+  ];
+  const barWidth = width - 240;
+  const labelX = 180;
+  const barX = 380;
+  const barHeight = 30;
+  const barGap = 90;
+
+  ctx.fillStyle = dim;
+  ctx.font = '600 24px "JetBrains Mono", monospace';
+  ctx.textAlign = 'left';
+  for (let i = 0; i < 3; i++) {
+    const y = barTop + i * barGap;
+    ctx.fillText(barNames[i].toUpperCase(), labelX, y + barHeight / 2);
+    ctx.fillStyle = '#1c1b20';
+    ctx.fillRect(barX, y, barWidth, barHeight);
+    ctx.fillStyle = gold;
+    ctx.fillRect(barX, y, (barWidth * barValues[i]) / 100, barHeight);
+    ctx.fillStyle = ink;
+    ctx.font = '600 22px "JetBrains Mono", monospace';
+    ctx.fillText(`${barValues[i]}%`, barX + barWidth + 16, y + barHeight / 2);
+    ctx.fillStyle = dim;
+  }
+
+  ctx.fillStyle = dim;
+  ctx.font = '500 20px "JetBrains Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Take the test at nvisible88.github.io/chromatic', width / 2, height - 60);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (blob) resolve(blob); else reject(new Error('Canvas export failed.'));
+    }, 'image/png');
+  });
+}
+
+function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = text.split(' ');
+  let line = '';
+  let currentY = y;
+  for (let n = 0; n < words.length; n++) {
+    const testLine = line ? line + ' ' + words[n] : words[n];
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && line) {
+      ctx.fillText(line, x, currentY);
+      line = words[n];
+      currentY += lineHeight;
+    } else {
+      line = testLine;
+    }
+  }
+  if (line) ctx.fillText(line, x, currentY);
+}
+
 function shareResult() {
   const text = `I scored ${state.score.toLocaleString()} on Chromatic — "${state.finalProfile}" (${state.finalAccuracy}% accuracy). Can you beat me?`;
   if (navigator.share) {
