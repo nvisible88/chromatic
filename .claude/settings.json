@@ -11,7 +11,8 @@
       "Bash(gh api *)",
       "Bash(curl -I *)",
       "Bash(python3 -m http.server *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(curl -sI https://nvisible88.github.io/chromatic/)"
     ],
     "deny": [
       "Read(.env)",
