@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.1 — P1/P2 bug fix pass (2026-05-25)
+
+### Patch
+
+- **Double-submit guard** — `submitScore()` now returns early if a request is already in-flight (`isSubmittingScore` flag); submit button is disabled during the fetch and re-enabled in `finally`.
+- **Leaderboard refresh debounce** — `loadLeaderboard()` returns early if already loading (`isLoadingLeaderboard` flag); reset in `finally` covers the `!rows.length` early-return path inside the try block.
+- **Remove debug `console.log`** — `console.log('endGame fired')` removed (Copilot artifact).
+- **Country select placeholder** — `populateCountries()` now prepends a disabled `Select country…` option; `submitScore()` validates `country !== ''` with same pattern as name validation.
+- **rAF leak on restart** — `startGame()` now cancels the previous `requestAnimationFrame` and all three advance timers on the old state before replacing it with `freshState()`.
+- **Clipboard `.catch()`** — `shareResult()` clipboard path now chains `.then()` / `.catch()` so permission denial shows "Couldn't copy to clipboard." instead of silently failing.
+
+### Failed approaches
+
+- **rAF leak root cause:** the original `startGame()` assumed canceling timers was only needed between levels, not on full restart. The `tick` closure references the global `state` by name, not by value — so after `state = freshState()`, the old closure continued running and wrote new rAF handles into the *new* state on each frame. The new `startTimer` then canceled only the old loop's most-recently-registered handle, leaving the loop alive.
+
+---
+
 ## v0.1 — MVP shipped (2026-05-25)
 
 ### Completed
