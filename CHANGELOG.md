@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.3 — unified Share button (2026-05-25)
+
+- Replaced "Share result" (text-only Web Share) and "Download share card" (blob download) with a single **Share** button.
+- Uses `navigator.canShare({ files })` to detect file-share support; opens the native share sheet with the PNG on supporting browsers (Chrome Android, iOS Safari 15.4+).
+- Falls back to direct PNG download on browsers that don't support file sharing.
+- `AbortError` (user dismissing the share sheet) is silently swallowed — not surfaced as an error.
+- Rationale: two buttons confused users; iOS Safari's blob-URL `<a download>` pattern opens a new tab instead of saving; `navigator.share` with files is the correct path.
+
+---
+
 ## v0.1.2 — og.png live (2026-05-25)
 
 - Generated and committed `og.png` (280KB, 1200×630). Social link previews now render on Twitter/X, iMessage, Slack, etc. Confirmed HTTP/2 200 at `nvisible88.github.io/chromatic/og.png`.

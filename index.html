@@ -778,7 +778,7 @@
 <section class="screen" id="screen-result">
   <div class="result-eyebrow">Your perception profile</div>
   <h1 class="result-label" id="resultLabel">Tetrachromat-level vision</h1>
-  <div class="result-tier"><span class="accent" id="resultPercentile">Top 4%</span> · You see what the rest of us miss.</div>
+  <div class="result-tier"><span class="accent" id="resultPercentile">Top 4%</span> · <span id="resultBlurb">You see what the rest of us miss.</span></div>
 
   <div class="score-headline">
     <div class="score-cell">
@@ -832,8 +832,7 @@
   <div class="button-row">
     <button class="btn ghost" onclick="resetGame()">Try again</button>
     <button class="btn ghost" onclick="showScreen('leaderboard'); loadLeaderboard();">Leaderboard</button>
-    <button class="btn ghost" onclick="shareResult()">Share result</button>
-    <button class="btn ghost" onclick="downloadShareCard()">Download share card</button>
+    <button class="btn ghost" onclick="shareCard()">Share</button>
   </div>
 </section>
 
@@ -1040,18 +1039,16 @@ function freshState() {
     timerStart: 0,
     timerDuration: 0,
     advanceTimer: null,
-    advanceFallbackTimer: null,
     watchdogTimer: null,
     locked: false,
+    gameOver: false,
   };
 }
 
 function clearAdvanceTimers() {
   clearTimeout(state.advanceTimer);
-  clearTimeout(state.advanceFallbackTimer);
   clearTimeout(state.watchdogTimer);
   state.advanceTimer = null;
-  state.advanceFallbackTimer = null;
   state.watchdogTimer = null;
 }
 
@@ -1081,24 +1078,21 @@ function scheduleLevelAdvance(delay) {
     }
   }, delay);
 
-  state.advanceFallbackTimer = setTimeout(() => {
-    if (state.locked) {
-      console.warn('advanceFallback triggered');
-      advanceLevel();
-    }
-  }, 2000);
-
   state.watchdogTimer = setTimeout(() => {
     const resultScreen = document.getElementById('screen-result');
     if (state.locked && (!resultScreen || !resultScreen.classList.contains('active'))) {
       console.warn('level advance watchdog forcing transition');
-      if (state.level > TOTAL_LEVELS) {
-        endGame();
-      } else {
-        advanceLevel();
+      try {
+        if (state.level > TOTAL_LEVELS) {
+          endGame();
+        } else {
+          advanceLevel();
+        }
+      } catch (err) {
+        console.error('watchdog failed', err);
       }
     }
-  }, 3000);
+  }, 2500);
 }
 
 function showScreen(name) {
@@ -1296,6 +1290,9 @@ function tierFor(accuracy01) {
 }
 
 function endGame() {
+  if (state.gameOver) return;
+  state.gameOver = true;
+
   state.elapsedMs = performance.now() - state.startedAt;
   const accuracy = state.correctCount / TOTAL_LEVELS; // 0..1
   const accuracyPct = Math.round(accuracy * 100);
@@ -1303,8 +1300,7 @@ function endGame() {
 
   document.getElementById('resultLabel').textContent = tier.label;
   document.getElementById('resultPercentile').textContent = tier.percentile;
-  document.querySelector('#screen-result .result-tier').innerHTML =
-    `<span class="accent">${tier.percentile}</span> · ${tier.blurb}`;
+  document.getElementById('resultBlurb').textContent = tier.blurb;
 
   document.getElementById('finalScore').textContent = state.score.toLocaleString();
   document.getElementById('finalAccuracy').textContent = accuracyPct;
@@ -1481,25 +1477,43 @@ async function loadLeaderboard() {
 /* ==========================================================
    SHARE
    ========================================================== */
-function downloadShareCard() {
+function showStatus(msg, isError) {
   const s = document.getElementById('submitStatus');
-  s.className = 'submit-status';
-  s.textContent = 'Creating share card…';
-  createShareCardBlob().then(blob => {
+  if (!s) return;
+  s.className = 'submit-status ' + (isError ? 'error' : 'success');
+  s.textContent = msg;
+  setTimeout(() => { s.textContent = ''; }, 2500);
+}
+
+async function shareCard() {
+  try {
+    const blob = await createShareCardBlob();
+    const file = new File([blob], 'chromatic-result.png', { type: 'image/png' });
+    const shareText = `I scored ${state.score.toLocaleString()} on Chromatic — "${state.finalProfile}" (${state.finalAccuracy}% accuracy). Can you beat me? https://nvisible88.github.io/chromatic/`;
+    const shareData = {
+      files: [file],
+      title: 'Chromatic — The Color Perception Test',
+      text: shareText,
+    };
+    if (navigator.canShare && navigator.canShare(shareData)) {
+      await navigator.share(shareData);
+      showStatus('Shared.', false);
+      return;
+    }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = 'chromatic-result.png';
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    s.className = 'submit-status success';
-    s.textContent = 'Share card downloaded.';
-    setTimeout(() => { s.textContent = ''; }, 2500);
-  }).catch(err => {
-    console.error(err);
-    s.className = 'submit-status error';
-    s.textContent = 'Could not generate share card.';
-  });
+    showStatus('Image saved.', false);
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    console.error('Share failed:', err);
+    showStatus('Could not share. Try again.', true);
+  }
 }
 
 async function createShareCardBlob() {
@@ -1622,23 +1636,6 @@ function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
   if (line) ctx.fillText(line, x, currentY);
 }
 
-function shareResult() {
-  const text = `I scored ${state.score.toLocaleString()} on Chromatic — "${state.finalProfile}" (${state.finalAccuracy}% accuracy). Can you beat me?`;
-  if (navigator.share) {
-    navigator.share({ title: 'Chromatic — Color Perception Test', text }).catch(() => {});
-  } else {
-    const s = document.getElementById('submitStatus');
-    navigator.clipboard.writeText(text).then(() => {
-      s.className = 'submit-status success';
-      s.textContent = 'Copied to clipboard.';
-      setTimeout(() => { s.textContent = ''; }, 2000);
-    }).catch(() => {
-      s.className = 'submit-status error';
-      s.textContent = "Couldn't copy to clipboard.";
-      setTimeout(() => { s.textContent = ''; }, 2000);
-    });
-  }
-}
 </script>
 
 </body>
