@@ -897,14 +897,24 @@ function countryToFlag(iso) {
 
 (function populateCountries() {
   const sel = document.getElementById('inputCountry');
-  // try to default to user's locale country via navigator.language
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.disabled = true;
+  placeholder.selected = true;
+  placeholder.textContent = 'Select country…';
+  sel.appendChild(placeholder);
+
   const lang = (navigator.language || '').toUpperCase();
   const localeGuess = lang.split('-')[1] || '';
+  let matched = false;
   COUNTRIES.forEach(([code, name]) => {
     const opt = document.createElement('option');
     opt.value = code;
     opt.textContent = `${countryToFlag(code)}  ${name}`;
-    if (code === localeGuess) opt.selected = true;
+    if (!matched && code === localeGuess) {
+      opt.selected = true;
+      matched = true;
+    }
     sel.appendChild(opt);
   });
 })();
@@ -1098,6 +1108,10 @@ function showScreen(name) {
 }
 
 function startGame() {
+  if (state) {
+    cancelAnimationFrame(state.timerHandle);
+    clearAdvanceTimers();
+  }
   state = freshState();
   state.startedAt = performance.now();
   showScreen('game');
@@ -1282,7 +1296,6 @@ function tierFor(accuracy01) {
 }
 
 function endGame() {
-  console.log('endGame fired');
   state.elapsedMs = performance.now() - state.startedAt;
   const accuracy = state.correctCount / TOTAL_LEVELS; // 0..1
   const accuracyPct = Math.round(accuracy * 100);
@@ -1329,6 +1342,9 @@ function endGame() {
 /* ==========================================================
    SUPABASE — LEADERBOARD
    ========================================================== */
+let isSubmittingScore = false;
+let isLoadingLeaderboard = false;
+
 function supabaseConfigured() {
   return SUPABASE_URL &&
          SUPABASE_URL !== "YOUR_SUPABASE_URL_HERE" &&
@@ -1337,6 +1353,8 @@ function supabaseConfigured() {
 }
 
 async function submitScore() {
+  if (isSubmittingScore) return;
+
   const statusEl = document.getElementById('submitStatus');
   statusEl.className = 'submit-status';
   statusEl.textContent = '';
@@ -1346,6 +1364,11 @@ async function submitScore() {
   if (!name) {
     statusEl.classList.add('error');
     statusEl.textContent = 'Name required.';
+    return;
+  }
+  if (!country) {
+    statusEl.classList.add('error');
+    statusEl.textContent = 'Country required.';
     return;
   }
 
@@ -1364,6 +1387,9 @@ async function submitScore() {
     profile: state.finalProfile,
   };
 
+  const submitBtn = document.querySelector('.form-row .btn');
+  isSubmittingScore = true;
+  if (submitBtn) submitBtn.disabled = true;
   statusEl.textContent = 'Submitting…';
 
   try {
@@ -1390,14 +1416,21 @@ async function submitScore() {
     console.error(err);
     statusEl.classList.add('error');
     statusEl.textContent = 'Submission failed. Try again.';
+  } finally {
+    isSubmittingScore = false;
+    if (submitBtn) submitBtn.disabled = false;
   }
 }
 
 async function loadLeaderboard() {
+  if (isLoadingLeaderboard) return;
+  isLoadingLeaderboard = true;
+
   const body = document.getElementById('lbBody');
   body.innerHTML = `<tr><td colspan="6" class="lb-empty">Loading…</td></tr>`;
 
   if (!supabaseConfigured()) {
+    isLoadingLeaderboard = false;
     body.innerHTML = `<tr><td colspan="6" class="lb-empty">Leaderboard is offline — Supabase credentials not yet configured.</td></tr>`;
     return;
   }
@@ -1440,6 +1473,8 @@ async function loadLeaderboard() {
   } catch (err) {
     console.error(err);
     body.innerHTML = `<tr><td colspan="6" class="lb-empty">Could not load leaderboard.</td></tr>`;
+  } finally {
+    isLoadingLeaderboard = false;
   }
 }
 
@@ -1592,11 +1627,16 @@ function shareResult() {
   if (navigator.share) {
     navigator.share({ title: 'Chromatic — Color Perception Test', text }).catch(() => {});
   } else {
-    navigator.clipboard.writeText(text);
     const s = document.getElementById('submitStatus');
-    s.className = 'submit-status success';
-    s.textContent = 'Copied to clipboard.';
-    setTimeout(() => { s.textContent = ''; }, 2000);
+    navigator.clipboard.writeText(text).then(() => {
+      s.className = 'submit-status success';
+      s.textContent = 'Copied to clipboard.';
+      setTimeout(() => { s.textContent = ''; }, 2000);
+    }).catch(() => {
+      s.className = 'submit-status error';
+      s.textContent = "Couldn't copy to clipboard.";
+      setTimeout(() => { s.textContent = ''; }, 2000);
+    });
   }
 }
 </script>
