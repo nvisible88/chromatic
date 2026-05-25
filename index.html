@@ -1015,8 +1015,36 @@ function freshState() {
     timerHandle: null,
     timerStart: 0,
     timerDuration: 0,
+    advanceTimer: null,
+    advanceFallbackTimer: null,
     locked: false,
   };
+}
+
+function clearAdvanceTimers() {
+  clearTimeout(state.advanceTimer);
+  clearTimeout(state.advanceFallbackTimer);
+  state.advanceTimer = null;
+  state.advanceFallbackTimer = null;
+}
+
+function advanceLevel() {
+  if (!state.locked) return;
+  clearAdvanceTimers();
+  state.level++;
+  if (state.level > TOTAL_LEVELS) {
+    endGame();
+  } else {
+    renderLevel();
+  }
+}
+
+function scheduleLevelAdvance(delay) {
+  clearAdvanceTimers();
+  state.advanceTimer = setTimeout(advanceLevel, delay);
+  state.advanceFallbackTimer = setTimeout(() => {
+    if (state.locked) advanceLevel();
+  }, 2000);
 }
 
 function showScreen(name) {
@@ -1065,6 +1093,7 @@ function renderLevel() {
   const oddIndex = Math.floor(Math.random() * cells);
 
   state.current = { cfg, base, odd, oddIndex, cells };
+  clearAdvanceTimers();
   state.locked = false;
 
   // HUD
@@ -1154,14 +1183,7 @@ function handleAnswer(index, btnEl) {
     flashFeedback('MISS', true);
   }
 
-  setTimeout(() => {
-    state.level++;
-    if (state.level > TOTAL_LEVELS) {
-      endGame();
-    } else {
-      renderLevel();
-    }
-  }, correct ? 700 : 1100);
+  scheduleLevelAdvance(correct ? 700 : 1100);
 }
 
 function handleTimeout() {
@@ -1175,10 +1197,7 @@ function handleTimeout() {
   grid.children[state.current.oddIndex].classList.add('reveal');
   flashFeedback('TIME', true);
 
-  setTimeout(() => {
-    state.level++;
-    if (state.level > TOTAL_LEVELS) endGame(); else renderLevel();
-  }, 1100);
+  scheduleLevelAdvance(1100);
 }
 
 function flashFeedback(value, miss) {
