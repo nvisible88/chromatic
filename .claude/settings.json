@@ -10,7 +10,8 @@
       "Bash(gh repo view *)",
       "Bash(gh api *)",
       "Bash(curl -I *)",
-      "Bash(python3 -m http.server *)"
+      "Bash(python3 -m http.server *)",
+      "Bash(git commit -m ' *)"
     ],
     "deny": [
       "Read(.env)",
