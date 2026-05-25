@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.2 — og.png live (2026-05-25)
+
+- Generated and committed `og.png` (280KB, 1200×630). Social link previews now render on Twitter/X, iMessage, Slack, etc. Confirmed HTTP/2 200 at `nvisible88.github.io/chromatic/og.png`.
+
+---
+
 ## v0.1.1 — P1/P2 bug fix pass (2026-05-25)
 
 ### Patch
@@ -55,7 +61,6 @@
 
 ### Next (v0.2 candidates)
 
-- Generate `og.png` and commit it (highest priority — link previews broken until done)
 - Verify Copilot freeze-bug fix on the live site by reproducing the trigger condition
 - Pre-game name + country capture
 - Basic analytics (Plausible or Supabase-derived)
