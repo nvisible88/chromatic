@@ -3,6 +3,8 @@
 ## v0.1.2 — og.png live (2026-05-25)
 
 - Generated and committed `og.png` (280KB, 1200×630). Social link previews now render on Twitter/X, iMessage, Slack, etc. Confirmed HTTP/2 200 at `nvisible88.github.io/chromatic/og.png`.
+- Regenerated `og.png` (281KB) with corrected wordmark/subtitle spacing — subtitle y shifted +50px, tagline y shifted +50px, eliminating overlap with Fraunces italic descenders at thumbnail size.
+- Extended OG/Twitter title to `· 30 Levels` suffix and expanded description to optimal length (148 chars) across all four meta tags.
 
 ---
 
