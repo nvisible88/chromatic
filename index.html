@@ -566,6 +566,40 @@
   }
   .input:focus { border-color: var(--accent); }
   .input::placeholder { color: var(--ink-faint); font-style: italic; }
+  .country-picker { position: relative; }
+  .country-list {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0; right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-top: none;
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 200;
+  }
+  .country-list.open { display: block; }
+  .country-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    cursor: pointer;
+    font-family: var(--serif);
+    font-size: 15px;
+    color: var(--ink);
+  }
+  .country-item:hover,
+  .country-item.active { background: var(--bg-elev); color: var(--accent); }
+  .country-item .ci-flag { font-size: 20px; line-height: 1; }
+  .country-item-empty {
+    padding: 12px 16px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-faint);
+    font-style: italic;
+  }
 
   /* ---------- leaderboard ---------- */
   .lb-header {
@@ -823,7 +857,10 @@
     <div class="submit-form-sub">Name + country · public</div>
     <div class="form-row">
       <input class="input" id="inputName" type="text" maxlength="20" placeholder="Your name" />
-      <select class="input" id="inputCountry"></select>
+      <div class="country-picker" id="countryPicker">
+        <input class="input" id="inputCountry" type="text" autocomplete="off" placeholder="Country" data-country-code="" />
+        <div class="country-list" id="countryList"></div>
+      </div>
       <button class="btn" onclick="submitScore()">Submit</button>
     </div>
     <div class="submit-status" id="submitStatus"></div>
@@ -894,28 +931,76 @@ function countryToFlag(iso) {
   return String.fromCodePoint(...iso.toUpperCase().split('').map(c => 127397 + c.charCodeAt(0)));
 }
 
-(function populateCountries() {
-  const sel = document.getElementById('inputCountry');
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.disabled = true;
-  placeholder.selected = true;
-  placeholder.textContent = 'Select country…';
-  sel.appendChild(placeholder);
+(function initCountryPicker() {
+  const input = document.getElementById('inputCountry');
+  const list  = document.getElementById('countryList');
+  let activeIdx = -1;
 
-  const lang = (navigator.language || '').toUpperCase();
-  const localeGuess = lang.split('-')[1] || '';
-  let matched = false;
-  COUNTRIES.forEach(([code, name]) => {
-    const opt = document.createElement('option');
-    opt.value = code;
-    opt.textContent = `${countryToFlag(code)}  ${name}`;
-    if (!matched && code === localeGuess) {
-      opt.selected = true;
-      matched = true;
+  function render(q) {
+    const matches = q
+      ? COUNTRIES.filter(([, n]) => n.toLowerCase().includes(q.toLowerCase()))
+      : COUNTRIES;
+    activeIdx = -1;
+    if (!matches.length) {
+      list.innerHTML = '<div class="country-item-empty">No matches</div>';
+    } else {
+      list.innerHTML = matches.map(([code, name]) =>
+        `<div class="country-item" data-code="${code}"><span class="ci-flag">${countryToFlag(code)}</span>${name}</div>`
+      ).join('');
+      list.querySelectorAll('.country-item').forEach(el => {
+        el.addEventListener('mousedown', e => { e.preventDefault(); pick(el.dataset.code); });
+      });
     }
-    sel.appendChild(opt);
+    list.classList.add('open');
+  }
+
+  function pick(code) {
+    const entry = COUNTRIES.find(([c]) => c === code);
+    if (!entry) return;
+    input.value = entry[1];
+    input.dataset.countryCode = code;
+    close();
+  }
+
+  function close() { list.classList.remove('open'); activeIdx = -1; }
+
+  function setActive(items, idx) {
+    items.forEach((el, i) => el.classList.toggle('active', i === idx));
+    if (idx >= 0) items[idx].scrollIntoView({ block: 'nearest' });
+  }
+
+  input.addEventListener('focus', () => render(input.value));
+  input.addEventListener('input', () => { input.dataset.countryCode = ''; render(input.value); });
+  input.addEventListener('blur', () => setTimeout(close, 150));
+  input.addEventListener('keydown', e => {
+    if (!list.classList.contains('open')) return;
+    const items = [...list.querySelectorAll('.country-item')];
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIdx = Math.min(activeIdx + 1, items.length - 1);
+      setActive(items, activeIdx);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIdx = Math.max(activeIdx - 1, 0);
+      setActive(items, activeIdx);
+    } else if (e.key === 'Enter' && activeIdx >= 0) {
+      e.preventDefault();
+      pick(items[activeIdx].dataset.code);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    }
   });
+
+  document.addEventListener('click', e => {
+    if (!document.getElementById('countryPicker').contains(e.target)) close();
+  });
+
+  // Pre-populate from navigator.language
+  const locale = (navigator.language || '').toUpperCase().split('-')[1] || '';
+  const pre = COUNTRIES.find(([code]) => code === locale);
+  if (pre) { input.value = pre[1]; input.dataset.countryCode = pre[0]; }
 })();
 
 /* ==========================================================
@@ -1356,7 +1441,7 @@ async function submitScore() {
   statusEl.textContent = '';
 
   const name = document.getElementById('inputName').value.trim().slice(0, 20);
-  const country = document.getElementById('inputCountry').value;
+  const country = document.getElementById('inputCountry').dataset.countryCode || '';
   if (!name) {
     statusEl.classList.add('error');
     statusEl.textContent = 'Name required.';

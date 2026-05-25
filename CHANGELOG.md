@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.4 — searchable country dropdown (2026-05-25)
+
+- Replaced native `<select>` with a custom inline combobox: text input + filtered dropdown list with flag emoji + country name.
+- Ported filtering behavior from brain test project; restyled to Chromatic's design tokens (no external library).
+- Supports arrow key navigation, Enter to select, Escape to close, click-outside to dismiss.
+- `navigator.language` pre-population preserved — locale match sets the input and ISO code on render.
+- `submitScore()` now reads `dataset.countryCode` (ISO 2-letter code); validation unchanged.
+
+---
+
 ## v0.1.3 — unified Share button (2026-05-25)
 
 - Replaced "Share result" (text-only Web Share) and "Download share card" (blob download) with a single **Share** button.
