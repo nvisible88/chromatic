@@ -1,42 +1,69 @@
-# CLAUDE — Project Notes for Chromatic
+# CLAUDE — Chromatic
 
-Overview
-- Chromatic is a viral, single-page color perception test inspired by the Farnsworth–Munsell 100 Hue Test. The MVP is lightweight, mobile-first, and designed for social sharing.
+Ship a viral color perception test that makes people share their score.
 
-Architecture
-- Single `index.html` file with vanilla JS and CSS; no build step. Optional `config.local.js` (gitignored) for secrets. Leaderboard via Supabase REST API.
+## Tech stack
 
-File map
-- index.html
-- README.md
-- CLAUDE.md
-- CHANGELOG.md
-- .gitignore
-- .env.example
+Vanilla HTML/CSS/JS · Supabase REST API · GitHub Pages · No build step.
 
-Key design decisions
-- No framework: zero build/deploy friction for GitHub Pages and quick iteration.
-- HSL-based color math: perceptually intuitive deltas for hue/saturation/lightness.
-- Three sub-dimensions (hue/sat/light) to mirror Farnsworth-Munsell complexity while keeping UI simple.
-- Difficulty curve: exponential decay so early levels are approachable and later levels feel expert.
+## File map
 
-Difficulty curve (MVP)
-- 30 levels rotating through hue / saturation / lightness
-- Deltas: hue 45°→3°, saturation 40%→2%, lightness 35%→2%
-- Grid: 3×3 → 6×6
-- Timer: 12s → 5s
+```
+index.html              — the entire game (single file)
+SPEC.md                 — product spec and v2 candidates
+CHANGELOG.md            — versioned history and failed approaches
+.gitignore
+.env.example
+.claude/
+  settings.json         — permissions and model
+  rules/
+    security.md         — secret handling rules
+    supabase.md         — Supabase-specific rules and current config
+    ux-aesthetic.md     — design system, typography, tone
+  agents/
+    debugger.md         — systematic debugging protocol
+    security-auditor.md — secret leak and RLS audit protocol
+```
 
-Current focus
-- Ship MVP to GitHub Pages and get first 100 plays.
+## Local dev
 
-Known TODOs / Next priorities
-- Add real Supabase credentials via `config.local.js` or environment on deploy (do not commit secrets).
-- Percentile labels are marketing copy until we collect a distribution.
-- Anti-abuse: add Edge Function + per-IP cooldown for leaderboard inserts.
-- Share-card image generation for social sharing.
+```bash
+python3 -m http.server 8000
+# open http://localhost:8000
+```
 
-Live URLs
-- GitHub repo: 
-- GitHub Pages: 
- - GitHub repo: https://github.com/nvisible88/chromatic
- - GitHub Pages: https://nvisible88.github.io/chromatic/
+## Deploy
+
+```bash
+git push origin main   # GitHub Pages auto-deploys
+```
+
+## Commit format
+
+Conventional commits. Subject line under 60 chars. Co-author line required:
+`Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
+
+## Code conventions
+
+- **Single-file architecture** — all game code lives in `index.html`. Do not split unless explicitly approved.
+- **Vanilla JS only** — no frameworks, no npm, no build tools. Zero dependencies.
+- **HSL color space** for all color math. Never convert to RGB for game logic.
+- **CSS variables** for all theme tokens — defined at `:root`, never hardcoded inline.
+- **JetBrains Mono** for UI metrics, eyebrows, and labels. **Fraunces** for display copy and headings.
+- No comments that explain what the code does. Only why, when non-obvious.
+
+## Specialist files
+
+- Supabase work → `.claude/rules/supabase.md`
+- Visual or copy changes → `.claude/rules/ux-aesthetic.md`
+- Debugging a bug → `.claude/agents/debugger.md`
+- Anything touching secrets or credentials → `.claude/agents/security-auditor.md`
+
+## Explicit prohibitions — non-negotiable
+
+- **Never commit the Supabase service_role key.** The anon key is safe to commit — it's public by design. The service_role key is not. Never paste it, never read it, never log it.
+- **Never add a build step, framework, or npm dependency** without explicit approval in the same message.
+- **Never split `index.html`** into multiple files without explicit approval.
+- **Never force push to main.**
+- **Never claim a file operation succeeded** without verifying file size or content. Lesson: the first deploy was a 64-line placeholder — the full game existed locally but the write was never verified.
+- **Never claim a bug is fixed** without reproducing the failure condition first. Lesson: the first "fix" for the level-30 freeze didn't reproduce the trigger, and the bug remained.
