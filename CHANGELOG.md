@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.0 — children mode (2026-05-26)
+
+- Added **Kids (8 and under)** mode alongside Adult, selectable via segmented toggle on the intro screen.
+- Kids mode: 15 levels, 2× easier deltas, 2× longer timers (10s floor), no 6×6 grid.
+- Adult mode behavior is byte-identical to v0.1.x — existing leaderboard rows rank correctly.
+- Result screen eyebrow shows `ADULT MODE ·` or `KIDS MODE ·` prefix.
+- Leaderboard has Adult / Kids mode toggle; filters rows by `mode` column; defaults to the mode just played.
+- `submitScore()` sends `mode` field in payload (Supabase `mode` column, default `'adult'`).
+- `MODES` config object is the single source of truth for all difficulty parameters.
+
+---
+
 ## v0.1.4 — searchable country dropdown (2026-05-25)
 
 - Replaced native `<select>` with a custom inline combobox: text input + filtered dropdown list with flag emoji + country name.

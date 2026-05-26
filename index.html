@@ -601,6 +601,31 @@
     font-style: italic;
   }
 
+  /* ---------- mode toggle ---------- */
+  .mode-toggle {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    margin-bottom: 32px;
+    overflow: hidden;
+  }
+  .mode-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 12px 24px;
+    background: transparent;
+    color: var(--ink-dim);
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+  .mode-btn + .mode-btn { border-left: 1px solid var(--line); }
+  .mode-btn.active { background: var(--accent); color: #1a1505; }
+  .mode-btn:not(.active):hover { background: var(--bg-elev); color: var(--ink); }
+  .lb-mode-toggle { margin-bottom: 24px; }
+
   /* ---------- leaderboard ---------- */
   .lb-header {
     display: flex;
@@ -757,12 +782,17 @@
     </p>
   </div>
 
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="modeBtnAdult" onclick="setMode('adult')">Adult</button>
+    <button class="mode-btn" id="modeBtnKids" onclick="setMode('kids')">Kids (8 and under)</button>
+  </div>
+
   <div class="button-row">
     <button class="btn" onclick="startGame()">
       Begin the test
       <span class="arrow">→</span>
     </button>
-    <button class="btn ghost" onclick="showScreen('leaderboard'); loadLeaderboard();">
+    <button class="btn ghost" onclick="showLeaderboard('adult')">
       View leaderboard
     </button>
   </div>
@@ -810,7 +840,7 @@
      RESULT SCREEN
      ============================================================ -->
 <section class="screen" id="screen-result">
-  <div class="result-eyebrow">Your perception profile</div>
+  <div class="result-eyebrow" id="resultEyebrow">Your perception profile</div>
   <h1 class="result-label" id="resultLabel">Tetrachromat-level vision</h1>
   <div class="result-tier"><span class="accent" id="resultPercentile">Top 4%</span> · <span id="resultBlurb">You see what the rest of us miss.</span></div>
 
@@ -868,7 +898,7 @@
 
   <div class="button-row">
     <button class="btn ghost" onclick="resetGame()">Try again</button>
-    <button class="btn ghost" onclick="showScreen('leaderboard'); loadLeaderboard();">Leaderboard</button>
+    <button class="btn ghost" onclick="showLeaderboard(currentMode)">Leaderboard</button>
     <button class="btn ghost" onclick="shareCard()">Share</button>
   </div>
 </section>
@@ -880,6 +910,11 @@
   <div class="lb-header">
     <div class="lb-title">Global <em>leaderboard</em></div>
     <div class="lb-sub">Top 50 · Live</div>
+  </div>
+
+  <div class="lb-mode-toggle mode-toggle">
+    <button class="mode-btn active" id="lbBtnAdult" onclick="switchLbMode('adult')">Adult</button>
+    <button class="mode-btn" id="lbBtnKids" onclick="switchLbMode('kids')">Kids</button>
   </div>
 
   <table class="lb-table">
@@ -1014,42 +1049,54 @@ function countryToFlag(iso) {
    Time pressure shrinks from 12s → 5s.
    ========================================================== */
 
-const TOTAL_LEVELS = 30;
+const TOTAL_LEVELS = 30; // kept for reference; game logic reads state.totalLevels
 const DIMENSIONS = ['hue', 'saturation', 'lightness'];
+
+const MODES = {
+  adult: { label: 'Adult',            totalLevels: 30, deltaMultiplier: 1.0, timeMultiplier: 1.0, minTime: 5  },
+  kids:  { label: 'Kids (8 and under)', totalLevels: 15, deltaMultiplier: 2.0, timeMultiplier: 2.0, minTime: 10 },
+};
+let currentMode = 'adult';
+let lbMode = 'adult';
 
 // hand-tuned curve so it's genuinely hard at the end
 function levelConfig(level) {
-  // level: 1..30
-  const t = (level - 1) / (TOTAL_LEVELS - 1); // 0..1
+  const mode = MODES[currentMode];
+  const totalLevels = mode.totalLevels;
+  const t = (level - 1) / (totalLevels - 1); // 0..1
 
-  // dimension rotates so each appears 10 times, interleaved
+  // dimension rotates so each appears evenly, interleaved
   const dim = DIMENSIONS[(level - 1) % 3];
 
   // delta curve — eased exponential decay
   let delta;
   if (dim === 'hue') {
-    // 45° → 3°
     delta = 45 * Math.pow(0.06, t);
     delta = Math.max(3, delta);
   } else if (dim === 'saturation') {
-    // 40% → 2%
     delta = 40 * Math.pow(0.05, t);
     delta = Math.max(2, delta);
   } else { // lightness
-    // 35% → 2%
     delta = 35 * Math.pow(0.057, t);
     delta = Math.max(2, delta);
   }
+  delta *= mode.deltaMultiplier;
 
-  // grid size grows
+  // grid size grows (kids skips 6x6)
   let gridSize;
-  if (level <= 6) gridSize = 3;
-  else if (level <= 14) gridSize = 4;
-  else if (level <= 22) gridSize = 5;
-  else gridSize = 6;
+  if (currentMode === 'kids') {
+    if (level <= 6) gridSize = 3;
+    else if (level <= 10) gridSize = 4;
+    else gridSize = 5;
+  } else {
+    if (level <= 6) gridSize = 3;
+    else if (level <= 14) gridSize = 4;
+    else if (level <= 22) gridSize = 5;
+    else gridSize = 6;
+  }
 
-  // time shrinks
-  const time = Math.max(5, 12 - (level - 1) * 0.25);
+  // time shrinks; kids gets doubled time with a 10s floor
+  const time = Math.max(mode.minTime, (12 - (level - 1) * 0.25) * mode.timeMultiplier);
 
   return { level, dim, delta, gridSize, time };
 }
@@ -1105,6 +1152,8 @@ let state = null;
 
 function freshState() {
   return {
+    mode: currentMode,
+    totalLevels: MODES[currentMode].totalLevels,
     level: 1,
     score: 0,
     streak: 0,
@@ -1141,7 +1190,7 @@ function advanceLevel() {
   if (!state.locked) return;
   clearAdvanceTimers();
   state.level++;
-  if (state.level > TOTAL_LEVELS) {
+  if (state.level > state.totalLevels) {
     endGame();
   } else {
     renderLevel();
@@ -1155,7 +1204,7 @@ function scheduleLevelAdvance(delay) {
       advanceLevel();
     } catch (err) {
       console.error('advanceLevel failed', err);
-      if (state.level > TOTAL_LEVELS) {
+      if (state.level > state.totalLevels) {
         endGame();
       } else {
         renderLevel();
@@ -1168,7 +1217,7 @@ function scheduleLevelAdvance(delay) {
     if (state.locked && (!resultScreen || !resultScreen.classList.contains('active'))) {
       console.warn('level advance watchdog forcing transition');
       try {
-        if (state.level > TOTAL_LEVELS) {
+        if (state.level > state.totalLevels) {
           endGame();
         } else {
           advanceLevel();
@@ -1234,7 +1283,7 @@ function renderLevel() {
   state.locked = false;
 
   // HUD
-  document.getElementById('hudLevel').textContent = `${state.level} / ${TOTAL_LEVELS}`;
+  document.getElementById('hudLevel').textContent = `${state.level} / ${state.totalLevels}`;
   document.getElementById('hudScore').textContent = state.score.toLocaleString();
   document.getElementById('hudStreak').textContent = state.streak;
   document.getElementById('hudPhase').textContent = phaseFor(state.level);
@@ -1379,10 +1428,12 @@ function endGame() {
   state.gameOver = true;
 
   state.elapsedMs = performance.now() - state.startedAt;
-  const accuracy = state.correctCount / TOTAL_LEVELS; // 0..1
+  const accuracy = state.correctCount / state.totalLevels; // 0..1
   const accuracyPct = Math.round(accuracy * 100);
   const tier = tierFor(accuracy);
 
+  const modeDisplay = state.mode === 'kids' ? 'KIDS' : 'ADULT';
+  document.getElementById('resultEyebrow').textContent = `${modeDisplay} MODE · YOUR PERCEPTION PROFILE`;
   document.getElementById('resultLabel').textContent = tier.label;
   document.getElementById('resultPercentile').textContent = tier.percentile;
   document.getElementById('resultBlurb').textContent = tier.blurb;
@@ -1418,6 +1469,27 @@ function endGame() {
   // stash for submission
   state.finalProfile = tier.label;
   state.finalAccuracy = accuracyPct;
+}
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('modeBtnAdult').classList.toggle('active', mode === 'adult');
+  document.getElementById('modeBtnKids').classList.toggle('active', mode === 'kids');
+}
+
+function showLeaderboard(mode) {
+  lbMode = mode || lbMode;
+  document.getElementById('lbBtnAdult').classList.toggle('active', lbMode === 'adult');
+  document.getElementById('lbBtnKids').classList.toggle('active', lbMode === 'kids');
+  showScreen('leaderboard');
+  loadLeaderboard();
+}
+
+function switchLbMode(mode) {
+  lbMode = mode;
+  document.getElementById('lbBtnAdult').classList.toggle('active', mode === 'adult');
+  document.getElementById('lbBtnKids').classList.toggle('active', mode === 'kids');
+  loadLeaderboard();
 }
 
 /* ==========================================================
@@ -1466,6 +1538,7 @@ async function submitScore() {
     time_ms: Math.round(state.elapsedMs),
     accuracy: state.finalAccuracy,
     profile: state.finalProfile,
+    mode: state.mode || 'adult',
   };
 
   const submitBtn = document.querySelector('.form-row .btn');
@@ -1492,7 +1565,7 @@ async function submitScore() {
 
     statusEl.classList.add('success');
     statusEl.textContent = 'Submitted. Welcome to the board.';
-    setTimeout(() => { showScreen('leaderboard'); loadLeaderboard(); }, 900);
+    setTimeout(() => { showLeaderboard(state.mode || 'adult'); }, 900);
   } catch (err) {
     console.error(err);
     statusEl.classList.add('error');
@@ -1519,7 +1592,8 @@ async function loadLeaderboard() {
   try {
     // sort by score desc, then time_ms asc (faster breaks ties)
     const url = `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}` +
-                `?select=name,country,score,time_ms,accuracy,profile` +
+                `?select=name,country,score,time_ms,accuracy,profile,mode` +
+                `&mode=eq.${lbMode}` +
                 `&order=score.desc,time_ms.asc&limit=50`;
     const res = await fetch(url, {
       headers: {
